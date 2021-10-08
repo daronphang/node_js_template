@@ -19,7 +19,8 @@
         "no-console": "off",
         "no-underscore-dangle": "off",
         "func-names": "off",
-        "object-curly-newline": "off"
+        "object-curly-newline": "off",
+        "no-param-reassign": "off",
       },
     "parserOptions": {
         "ecmaVersion": 12

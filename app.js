@@ -1,23 +1,26 @@
 const express = require('express');
 const cookieParser = require('cookie-parser');
 
-const User = require('./models/user');
-const sequelize = require('./util/database');
+// REMOVE WHERE APPROPRIATE
+const passport = require('passport');
+const sequelize = require('./util/database-sql');
+const { mongoConnect } = require('./util/database-nosql');
 
 const authRoutes = require('./routes/auth');
-const userRoutes = require('./routes/user');
+const sharedRoutes = require('./routes/shared');
 
 const allowedOrigins = [
-  'http://127.0.0.1:5050',
-  'http://localhost:5050',
-  'http://127.0.0.1:5000',
-  'http://localhost:5000',
+  'http://127.0.0.1:8000',
+  'http://localhost:8000',
+  'http://127.0.0.1:8080',
+  'http://localhost:8080',
 ];
 
 const app = express();
 
 app.use(express.json()); // application/json
 app.use(cookieParser()); // parse request cookies
+app.use(passport.initialize());
 
 // setting up CORS response to avoid errors
 app.use((req, res, next) => {
@@ -35,23 +38,27 @@ app.use((req, res, next) => {
   next();
 });
 
-// app.use('/auth', authRoutes);
-// app.use('/user', userRoutes);
+app.use('/auth', authRoutes);
+app.use('/shared', sharedRoutes);
 
 // uncaught errors in promise or try/catch as failsafe (SHOULD NOT END UP HERE)
 app.use((error, req, res, next) => {
   console.log(error);
-  // const errMsg = error.message;
-  // return res.status(status).json({ message: errMsg });
+  return res.status(500).json({ message: error.message });
 });
 
 // Sync models to database
 sequelize
   .sync()
   .then((res) => {
+    app.listen(8080);
     console.log('Connected to MySQL');
-    app.listen(5000);
   })
   .catch((err) => {
     console.log(err);
   });
+
+// For MongoDB
+// mongoConnect(() => {
+//   app.listen(8080);
+// });

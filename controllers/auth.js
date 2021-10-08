@@ -6,7 +6,7 @@ const { generateTokens } = require('../util/jwt-tokens');
 const { getRefreshTokens } = require('../util/jwt-tokens');
 const { throwErrorObject } = require('../helpers/generic');
 
-const { User } = require('../models/user');
+const { signUp } = require('../models/user-sql');
 
 // Middleware for signing up user
 exports.postSignUpUser = (req, res, next) => {
@@ -17,24 +17,31 @@ exports.postSignUpUser = (req, res, next) => {
     return res.status(400).json({ message: errMsg[0].msg });
   }
 
-  const { firstName, lastName, email, password } = req.body;
-
-  // Hashing password with async function
-  return bcrypt
-    .hash(password, 12)
-    .then((hashedPw) => {
+  const signUpUserHandler = async () => {
+    const { firstName, lastName, email, password } = req.body;
+    try {
+      // Hashing password with async function
+      const hashedPw = await bcrypt.hash(password, 12);
       // Create new user model and write to database
-      // Write some code...
-    })
-    .then((successRes) => {
-      const response = {
-        message: `Successfully added ${email} to user database.`,
+      // return objects specifically for MySQL
+      const [newUser, created] = await signUp(
+        false,
+        firstName,
+        lastName,
         email,
-        details: successRes,
-      };
-      return res.status(200).json(response);
-    })
-    .catch((err) => res.status(400).json({ message: err }));
+        hashedPw,
+      );
+
+      if (!created) throwErrorObject('User already exists in database.', 401);
+      return res.status(200).json({
+        message: `Successfully added ${email} to user database.`,
+        createdUser: newUser,
+      });
+    } catch (err) {
+      return res.status(400).json({ message: err.message, user: email });
+    }
+  };
+  return signUpUserHandler();
 };
 
 // Middleware for logging in user
@@ -52,7 +59,6 @@ exports.postLogin = (req, res, next) => {
       }
 
       // User credentials are valid; generating tokens and sending response
-
       const tokens = await generateTokens(req.user._id.toString(), 'LOGIN');
 
       res.cookie('accessToken', tokens.accessToken, { httpOnly: true });
@@ -60,7 +66,8 @@ exports.postLogin = (req, res, next) => {
       return res.status(200).json({
         message: 'Authentication is valid. Login success.',
         _id: req.user._id,
-        name: req.user.name,
+        firstName: req.user.firstName,
+        lastName: req.user.lastName
       });
     } catch (err) {
       if (!err.statusCode) {
@@ -75,7 +82,7 @@ exports.postLogin = (req, res, next) => {
 
 // Middleware for refreshing token
 exports.getRefreshToken = (req, res, next) => {
-  const userID = req._id;
+  const _id = req._id;
   const refreshToken = req.cookies.refreshToken || '';
 
   const refreshTokenHandler = async () => {
@@ -83,7 +90,7 @@ exports.getRefreshToken = (req, res, next) => {
       // Check if refresh token is valid
       const refreshTokenValid = jwt.verify(
         refreshToken,
-        'SECRET_REFRESH_KEY_SHOP_SPREE',
+        'SECRET_REFRESH_KEY',
       );
 
       // Retrieve user object stored in database corresponding to refresh token
@@ -92,7 +99,7 @@ exports.getRefreshToken = (req, res, next) => {
         (obj) => obj.refreshToken === refreshToken,
       );
 
-      if (!refTokenObj || refTokenObj._id !== userID) {
+      if (!refTokenObj || refTokenObj._id !== _id) {
         throwErrorObject(
           'Refresh token or user is invalid. Unable to issue new access token.',
           404,
@@ -100,12 +107,12 @@ exports.getRefreshToken = (req, res, next) => {
       }
 
       // Generate access token if user and refresh token are valid
-      const tokens = await generateTokens(userID, 'REFRESH');
+      const tokens = await generateTokens(_id, 'REFRESH');
 
       res.cookie('accessToken', tokens.accessToken, { httpOnly: true });
       return res.status(200).json({
         message: 'Access token successfully refreshed.',
-        _id: userID,
+        _id: _id,
       });
     } catch (err) {
       if (!err.statusCode) {
@@ -170,4 +177,13 @@ exports.getLogout = (req, res, next) => {
       message: 'User successfully logged out. Token cookies cleared.',
       refreshTokenMsg,
     });
+};
+
+exports.getOauthProfile = (req, res, next) => {
+  res.status(200).json({
+    message: "Successfully retrieved OAuth user profile.",
+    _id: req.user.id,
+    firstName: req.user.firstName,
+    lastName: req.user.lastName,
+  });
 };
